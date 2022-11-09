@@ -1,9 +1,3 @@
----
-editor_options: 
-  markdown: 
-    wrap: sentence
----
-
 # S&P 500 Index - Time Series Forecasting
 
 This project is part of the ADS-506: Applied Time Series Analysis course in the Applied Data Science Program at the University of San Diego.
