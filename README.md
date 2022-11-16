@@ -4,8 +4,6 @@ This project is part of the ADS-506: Applied Time Series Analysis course in the 
 
 Traffic congestion leads billions of dollars in losses each year by individuals and corporations alike. By understanding and accurately predicting traffic at major intersections, routes and travel time can be optimized to reduce overall monetary loss. 
 
-\--
-
 ## Contributors
 
 -   Sanjay Phillip
