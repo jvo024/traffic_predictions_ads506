@@ -1,9 +1,8 @@
-# S&P 500 Index - Time Series Forecasting
+# Traffic Congestion - Time Series Forecasting
 
 This project is part of the ADS-506: Applied Time Series Analysis course in the Applied Data Science Program at the University of San Diego.
 
-The S&P 500 Index is a valuable benchmark for the US stock market and consists of shares of the 500 largest publicly traded companies in the United States.
-By understanding trends, seasonality, and the factors that influence the value of the S&P 500, analysts can better understand the risk of investment into the popular stock market index, and better understand when are the best times to make investments.
+Traffic congestion leads billions of dollars in losses each year by individuals and corporations alike. By understanding and accurately predicting traffic at major intersections, routes and travel time can be optimized to reduce overall monetary loss. 
 
 \--
 
