@@ -1,0 +1,52 @@
+---
+title: "Traffic Predictions - Time Series Analysis"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# 1. Data Overview
+
+```{r}
+# Install necessary packages
+
+# Import dataset
+df <- read.csv("traffic.csv")
+head(df)
+```
+
+This data set contains 48,120 observations on vehicles passing through different junctions at different times and dates. The variables are as follows:
+  - DateTime
+  - Junction
+  - Vehicles
+  - ID
+
+# 2. Exploratory Data Analysis
+
+```{r}
+
+```
+
+
+# 3. Pre-processing
+
+## 3.1 Data cleaning
+
+```{r}
+
+```
+
+## 3.2 Differencing/Smoothing/Transforming (if necessary) 
+
+```{r}
+
+```
+
+# 4. Modeling
+
+```{r}
+
+```
+
+# 5. Conclusion
