@@ -1,0 +1,627 @@
+---
+title: "Traffic Predictions - Time Series Analysis"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+# 1. Data Overview
+
+## 1.1 Loading Packages
+
+```{r setup}
+# Install necessary packages
+library(fpp2)
+library(zoo)
+library(readr)
+library(dplyr)
+library(grid)
+library(data.table)
+library(stringr)
+library(sjmisc)
+library(TSstudio)
+
+set.seed(506)
+```
+
+## 1.2 Reading Data to Dataframe
+
+```{r DataInput}
+# Import dataset
+# Dateframe set to raw dataset from GitHub repo
+traffic_df <- read.csv("https://raw.githubusercontent.com/jvo024/traffic_predictions_ads506/main/traffic.csv")
+head(traffic_df)
+```
+This data set contains 48,120 observations on vehicles passing through different junctions at different times and dates. The variables are as follows: DateTime, Junction, Vehicles, ID
+
+# 2. Exploratory Data Analysis
+
+## 2.1 Check for Null Values
+```{r null}
+print(which(is.na(traffic_df)))
+```
+No null values were identified from all 3 columns.
+
+## 2.2 Summary of Data
+```{r}
+summary(traffic_df)
+```
+From an initial summary of the data set, we know that there are 4 junctions that were observed. We also can know that within an hour, up to 180 vehicles can be sighted.
+
+## 2.3 Plot Time Series
+
+Initial time series plot of first 250 observations on vehicles. We only use the first 250 observations because the data set is large.
+```{r}
+head <- head(traffic_df, 250)
+vehicles.ts <- ts(head$Vehicles, frequency = 24)
+
+plot(vehicles.ts)
+```
+
+## 2.4 Plot Time Series by Junction
+
+To get some further information on the overall data set, the main data frame was subset into 4 based on the junction associated with the data and time.
+```{r}
+junc_1 <- traffic_df[traffic_df$Junction == 1, ]
+junc_2 <- traffic_df[traffic_df$Junction == 2, ]
+junc_3 <- traffic_df[traffic_df$Junction == 3, ]
+junc_4 <- traffic_df[traffic_df$Junction == 4, ]
+
+junc_1.ts <- ts(junc_1$Vehicles, frequency = 24)
+plot(junc_1.ts, main = "Junction 1")
+
+junc_2.ts <- ts(junc_2$Vehicles, frequency = 24)
+plot(junc_2.ts, main = "Junction 2")
+
+junc_3.ts <- ts(junc_3$Vehicles, frequency = 24)
+plot(junc_3.ts, main = "Junction 3")
+
+junc_4.ts <- ts(junc_4$Vehicles, frequency = 24)
+plot(junc_4.ts, main = "Junction 4")
+```
+
+## 2.5 Plot autocorrelations of each Junction
+
+```{r}
+# Might want to look into the why the blue line is at 0 for all 4 ACF plots
+acf(junc_1.ts, main = "ACF - Junction 1")
+```
+
+```{r}
+acf(junc_2.ts, main = "ACF - Junction 2")
+```
+
+```{r}
+acf(junc_3.ts, main = "ACF - Junction 3")
+```
+
+```{r}
+acf(junc_4.ts, main = "ACF - Junction 4")
+```
+
+# 3. Pre-processing
+
+## 3.1 Data Cleaning
+
+The ID column might not be correlated to the time series analysis that we will be conducting. Thus, we can opt to remove this variable while creating the model.
+```{r}
+drop <- c("ID")
+traffic_df = traffic_df[,!(names(traffic_df) %in% drop)]
+```
+
+Set the datatime (POSIXct) variable in the traffic dataframe
+```{r}
+traffic_df$DateTime <- as.POSIXct(traffic_df$DateTime, tz = "UTC")
+head(traffic_df)
+```
+
+## 3.2 Feature Engineering
+
+```{r FeatureEngineeringSetUp}
+# Create duplicate data set to perform feature engineering
+df_fengin <- data.frame(traffic_df)
+```
+
+### 3.2.1 Identify Holidays
+```{r}
+# Create empty column to fill with binary values 
+df_fengin$Holiday <- NA
+
+# Create list of bank holiday values found via: https://www.calendardate.com/federal_holidays_2016.html
+bank_holidays <- as.Date(c(
+  
+# Same day each year
+NewYears = "2017-01-01",
+#  "07-04", # July 4 
+#  "11-11", # Veterans day 
+#  "12-25", # Christmas Day 
+ 
+# 2015 
+MLK = "2015-01-19", 
+Pres =  "2015-02-16",
+Mem = "2015-05-25",
+July4 = "2015-07-03", 
+Labor = "2015-09-07", 
+Columbus = "2015-10-12", 
+Thank = "2015-11-26", 
+  
+# 2016 
+MLK = "2016-01-18", 
+Pres = "2016-02-15", 
+Mem = "2016-05-30",
+Labor = "2016-09-05", 
+Columbus = "2016-10-10", 
+Thank = "2016-11-24", 
+XMas = "2016-12-26", 
+  
+# 2017
+NewYears = "2017-01-02",
+MLK = "2017-01-16",
+Pres =  "2017-02-20", 
+Mem = "2017-05-29",
+Labor = "2017-09-04",
+Columbus = "2017-10-9",  
+Thank = "2017-11-23" 
+))
+
+# Extract date from subsets
+j1 <- subset(df_fengin, Junction == 1)
+j2 <- subset(df_fengin, Junction == 2)
+j3 <- subset(df_fengin, Junction == 3)
+j4 <- subset(df_fengin, Junction == 4)
+
+## Initialize as Time Series
+j1.ts <- ts(j1$Vehicles, frequency = 24)
+j2.ts <- ts(j2$Vehicles, frequency = 24)
+j3.ts <- ts(j3$Vehicles, frequency = 24)
+j4.ts <- ts(j4$Vehicles, frequency = 24)
+
+# Extract date from subsets
+j1_date <- as.Date(j1$DateTime)
+j2_date <- as.Date(j2$DateTime)
+j3_date <- as.Date(j3$DateTime)
+j4_date <- as.Date(j4$DateTime)
+
+# Test if holiday
+j1$Holiday <- j1_date %in% bank_holidays
+head(j4)
+j2$Holiday <- j2_date %in% bank_holidays
+head(j4)
+j3$Holiday <- j3_date %in% bank_holidays
+head(j4)
+j4$Holiday <- j4_date %in% bank_holidays
+head(j4)
+
+```
+
+```{r}
+# Check for outliers using boxplots
+# Meeting notes: May want to look further into the relationship of traffic on holidays
+require(gridExtra)
+grid.arrange(
+  
+  (ggplot(j1) +
+     aes(x = "", y = Vehicles) +
+     geom_boxplot(fill = "#0c4c8a") +
+     ggtitle("Boxplot of Vehicles at Junction 1") +
+     theme_minimal()),
+  
+  (ggplot(j2) +
+     aes(x = "", y = Vehicles) +
+     geom_boxplot(fill = "#0c4c8a") +
+     ggtitle("Boxplot of Vehicles at Junction 2") +
+     theme_minimal()),
+  
+  (ggplot(j3) +
+     aes(x = "", y = Vehicles) +
+     geom_boxplot(fill = "#0c4c8a") +
+     ggtitle("Boxplot of Vehicles at Junction 3") +
+     theme_minimal()),
+  
+  (ggplot(j4) +
+     aes(x = "", y = Vehicles) +
+     geom_boxplot(fill = "#0c4c8a") +
+     ggtitle("Boxplot of Vehicles at Junction 4") +
+     theme_minimal()),
+  ncol = 2
+)
+```
+Should include commentary on results of outliers - possibly that there are high traffic days but not low traffic days
+
+```{r}
+# Create time series for number of vehicles at each junction
+j1.ts <- ts(j1$Vehicles, start = c(2015, 11),frequency = 24*365)
+j2.ts <- ts(j2$Vehicles, start = c(2015, 11),frequency = 24*365)
+j3.ts <- ts(j3$Vehicles, start = c(2015, 11),frequency = 24*365)
+j4.ts <- ts(j4$Vehicles, start = c(2015, 11),frequency = 24*365)
+
+# Examine Time Plots and ACFs for each series
+# Junction 1 
+  # shows positive additive trend and multiplicative seasonality
+  # ACF shows definite cyclical behavior, very high autocorrelation 
+autoplot(j1.ts)
+labs(title = "Vehicles at Junction 1",
+     x = "Time", 
+     y = "# Vehicles ")
+
+acf(j1.ts)
+
+## Junction 2 
+  # shows multiplicative trend ? and seasonality
+  # possible outlier around season 50
+  # ACF shows definite cyclical behavior, very high autocorrelation 
+autoplot(j2.ts) +
+labs(title = "Vehicles at Junction 2",
+     x = "Time", 
+     y = "# Vehicles ")
+
+acf(j2.ts)
+
+## Junction 3 
+  # slight upward trend
+  # acf plot shows definitive cyclical nature but time plot is unclear of seasonality
+  # high variation in the number of vehicles per day
+  # possible outliters that are that high? Or just peak times 
+autoplot(j3.ts)+
+labs(title = "Vehicles at Junction 3",
+     x = "Time", 
+     y = "# Vehicles ")
+
+acf(j3.ts)
+
+## Junction 4 
+  # no apparent trend, mean seems to be 0 
+  # acf plot shows definitive cyclical nature but time plot is unclear of seasonality
+  # high variation in the number of vehicles per day
+  # possible outliters that are that high? Or just peak times 
+autoplot(j4.ts) +
+labs(title = "Vehicles at Junction 4",
+     x = "Time", 
+     y = "# Vehicles ")
+
+acf(j4.ts)
+```
+
+```{r}
+## Compare vehiles per month at each junction 
+# Find total # vehicles in each month 
+
+# Junction 1
+j1_11<- sum((j1[months(j1$DateTime) %in% month.name[c(11)], ])$Vehicles)
+j1_12 <- sum((j1[months(j1$DateTime) %in% month.name[c(12)], ])$Vehicles)
+j1_1 <- sum((j1[months(j1$DateTime) %in% month.name[c(1)], ])$Vehicles)
+j1_2 <- sum((j1[months(j1$DateTime) %in% month.name[c(2)], ])$Vehicles)
+j1_3 <- sum((j1[months(j1$DateTime) %in% month.name[c(3)], ])$Vehicles)
+j1_4 <- sum((j1[months(j1$DateTime) %in% month.name[c(4)], ])$Vehicles)
+j1_5 <- sum((j1[months(j1$DateTime) %in% month.name[c(5)], ])$Vehicles)
+j1_6 <- sum((j1[months(j1$DateTime) %in% month.name[c(6)], ])$Vehicles)
+
+j1_vehicle_totals = c(j1_11, j1_12, j1_1, j1_2, j1_3, j1_4, j1_5, j1_6)
+j1_months = c('Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'April', 'May', 'June')
+
+# Junction 2
+j2_11<- sum((j2[months(j2$DateTime) %in% month.name[c(11)], ])$Vehicles)
+j2_12 <- sum((j2[months(j2$DateTime) %in% month.name[c(12)], ])$Vehicles)
+j2_1 <- sum((j2[months(j2$DateTime) %in% month.name[c(1)], ])$Vehicles)
+j2_2 <- sum((j2[months(j2$DateTime) %in% month.name[c(2)], ])$Vehicles)
+j2_3 <- sum((j2[months(j2$DateTime) %in% month.name[c(3)], ])$Vehicles)
+j2_4 <- sum((j2[months(j2$DateTime) %in% month.name[c(4)], ])$Vehicles)
+j2_5 <- sum((j2[months(j2$DateTime) %in% month.name[c(5)], ])$Vehicles)
+j2_6 <- sum((j2[months(j2$DateTime) %in% month.name[c(6)], ])$Vehicles)
+
+j2_vehicle_totals = c(j2_11, j2_12, j2_1, j2_2, j2_3, j2_4, j2_5, j2_6)
+j2_months = c('Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'April', 'May', 'June')
+
+# Junction 3 
+j3_11<- sum((j3[months(j3$DateTime) %in% month.name[c(11)], ])$Vehicles)
+j3_12 <- sum((j3[months(j3$DateTime) %in% month.name[c(12)], ])$Vehicles)
+j3_1 <- sum((j3[months(j3$DateTime) %in% month.name[c(1)], ])$Vehicles)
+j3_2 <- sum((j3[months(j3$DateTime) %in% month.name[c(2)], ])$Vehicles)
+j3_3 <- sum((j3[months(j3$DateTime) %in% month.name[c(3)], ])$Vehicles)
+j3_4 <- sum((j3[months(j3$DateTime) %in% month.name[c(4)], ])$Vehicles)
+j3_5 <- sum((j3[months(j3$DateTime) %in% month.name[c(5)], ])$Vehicles)
+j3_6 <- sum((j3[months(j3$DateTime) %in% month.name[c(6)], ])$Vehicles)
+
+j3_vehicle_totals = c(j3_11, j3_12, j3_1, j3_2, j3_3, j3_4, j3_5, j3_6)
+j3_months = c('Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'April', 'May', 'June')
+
+
+# Junction 4 
+j4_1 <- sum((j4[months(j4$DateTime) %in% month.name[c(1)], ])$Vehicles)
+j4_2 <- sum((j4[months(j4$DateTime) %in% month.name[c(2)], ])$Vehicles)
+j4_3 <- sum((j4[months(j4$DateTime) %in% month.name[c(3)], ])$Vehicles)
+j4_4 <- sum((j4[months(j4$DateTime) %in% month.name[c(4)], ])$Vehicles)
+j4_5 <- sum((j4[months(j4$DateTime) %in% month.name[c(5)], ])$Vehicles)
+j4_6 <- sum((j4[months(j4$DateTime) %in% month.name[c(6)], ])$Vehicles)
+
+j4_vehicle_totals = c(j4_1, j4_2, j4_3, j4_4, j4_5, j4_6)
+j4_months = c('Jan', 'Feb', 'Mar', 'April', 'May', 'June')
+```
+
+```{r}
+# Plot bar chart of vehicles per month 
+# Need to Make these prettier but thats the main point 
+par(2,2)
+barplot(j1_vehicle_totals, 
+        names.arg = j1_months,
+        xlab = 'Months',
+        ylab = 'Total Vehicles',
+        main = 'Total Vehicles per Month at Junction 1')
+barplot(j2_vehicle_totals, 
+        names.arg = j2_months,
+        xlab = 'Months',
+        ylab = 'Total Vehicles',
+        main = 'Total Vehicles per Month at Junction 2')
+barplot(j3_vehicle_totals, 
+        names.arg = j3_months,
+        xlab = 'Months',
+        ylab = 'Total Vehicles',
+        main = 'Total Vehicles per Month at Junction 3')
+barplot(j4_vehicle_totals, 
+        names.arg = j4_months,
+        xlab = 'Months',
+        ylab = 'Total Vehicles',
+        main = 'Total Vehicles per Month at Junction 4')
+```
+# 4. Modeling
+
+## 4.1 Partition Train and Validation Data
+
+We split the data by junction to have separate train/test sets for each.
+```{r}
+## Junction 1
+j1.split <- ts_split(ts.obj = j1.ts, sample.out = 2918)
+j1.train <- j1.split$train
+j1.test <- j1.split$test
+
+## Junction 2
+j2.split <- ts_split(ts.obj = j2.ts, sample.out = 2918)
+j2.train <- j2.split$train
+j2.test <- j2.split$test
+
+## Junction 3
+j3.split <- ts_split(ts.obj = j3.ts, sample.out = 2918)
+j3.train <- j3.split$train
+j3.test <- j3.split$test
+
+## Junction 4
+j4.split <- ts_split(ts.obj = j4.ts, sample.out = 869)
+j4.train <- j4.split$train
+j4.test <- j4.split$test
+```
+
+## 4.2 Naive Model
+```{r}
+j1.naive <- naive(j1.train, h = 2918)
+#summary(j1.naive)
+
+j2.naive <- naive(j2.train, h = 2918)
+#summary(j2.naive)
+
+j3.naive <- naive(j3.train, h = 2918)
+#summary(j3.naive)
+
+j4.naive <- naive(j4.train, h = 869)
+#summary(j4.naive)
+
+# Calculate RMSE Values
+j1.naive.RMSE <- as.numeric(j1.naive$residuals)
+j1.naive.RMSE <- j1.naive.RMSE[-1]
+j1.naive.RMSE <- sqrt(mean(j1.naive.RMSE^2))
+
+j2.naive.RMSE <- as.numeric(j2.naive$residuals)
+j2.naive.RMSE <- j2.naive.RMSE[-1]
+j2.naive.RMSE <- sqrt(mean(j2.naive.RMSE^2))
+
+j3.naive.RMSE <- as.numeric(j3.naive$residuals)
+j3.naive.RMSE <- j3.naive.RMSE[-1]
+j3.naive.RMSE <- sqrt(mean(j3.naive.RMSE^2))
+
+j4.naive.RMSE <- as.numeric(j4.naive$residuals)
+j4.naive.RMSE <- j4.naive.RMSE[-1]
+j4.naive.RMSE <- sqrt(mean(j4.naive.RMSE^2))
+```
+
+
+## 4.3 Simple Exponential Smoothing
+```{r}
+j1.se <- ses(j1.train, h = 2918)
+#summary(j1.se)
+
+j2.se <- ses(j2.train, h = 2918)
+#summary(j2.se)
+
+j3.se <- ses(j3.train, h = 2918)
+#summary(j3.se)
+
+j4.se <- ses(j4.train, h = 869)
+#summary(j4.se)
+
+# Calculate RMSE Values
+j1.se.RMSE <- as.numeric(j1.se$residuals)
+j1.se.RMSE <- sqrt(mean(j1.se.RMSE^2))
+
+j2.se.RMSE <- as.numeric(j2.se$residuals)
+j2.se.RMSE <- sqrt(mean(j2.se.RMSE^2))
+
+j3.se.RMSE <- as.numeric(j3.se$residuals)
+j3.se.RMSE <- sqrt(mean(j3.se.RMSE^2))
+
+j4.se.RMSE <- as.numeric(j4.se$residuals)
+j4.se.RMSE <- sqrt(mean(j4.se.RMSE^2))
+
+```
+
+## 4.4 Holt's Trend Method
+```{r}
+j1.holt <- holt(j1.train, h = 2918)
+#summary(j1.holt)
+
+j2.holt <- holt(j2.train, h = 2918)
+#summary(j2.holt)
+
+j3.holt <- holt(j3.train, h = 2918)
+#summary(j3.holt)
+
+j4.holt <- holt(j4.train, h = 869)
+#summary(j4.holt)
+
+# Calculate RMSE Values
+j1.holt.RMSE <- as.numeric(j1.holt$residuals)
+j1.holt.RMSE <- sqrt(mean(j1.holt.RMSE^2))
+
+j2.holt.RMSE <- as.numeric(j2.holt$residuals)
+j2.holt.RMSE <- sqrt(mean(j2.holt.RMSE^2))
+
+j3.holt.RMSE <- as.numeric(j3.holt$residuals)
+j3.holt.RMSE <- sqrt(mean(j3.holt.RMSE^2))
+
+j4.holt.RMSE <- as.numeric(j4.holt$residuals)
+j4.holt.RMSE <- sqrt(mean(j4.holt.RMSE^2))
+
+```
+
+## 4.5 Regression Method
+```{r}
+# R crashes when using season as predictor, we chose not to include this.
+
+j1.regression <- tslm(j1.train ~ trend)
+#summary(j1.regression)
+
+j2.regression <- tslm(j2.train ~ trend)
+#summary(j2.regression)
+
+j3.regression <- tslm(j3.train ~ trend)
+#summary(j3.regression)
+
+j4.regression <- tslm(j4.train ~ trend)
+#summary(j4.regression)
+
+# Calculate RMSE Values
+j1.reg.RMSE <- as.numeric(j1.regression$residuals)
+j1.reg.RMSE <- sqrt(mean(j1.reg.RMSE^2))
+
+j2.reg.RMSE <- as.numeric(j2.regression$residuals)
+j2.reg.RMSE <- sqrt(mean(j2.reg.RMSE^2))
+
+j3.reg.RMSE <- as.numeric(j3.regression$residuals)
+j3.reg.RMSE <- sqrt(mean(j3.reg.RMSE^2))
+
+j4.reg.RMSE <- as.numeric(j4.regression$residuals)
+j4.reg.RMSE <- sqrt(mean(j4.reg.RMSE^2))
+
+```
+
+## 4.6 Auto Arima Method with External Variables
+```{r}
+## Partition Data with External Variables
+j1.train.external <- j1[1:11674,]%>%
+  select(-DateTime, -Junction)
+
+j2.train.external <- j2[1:11674,]%>%
+  select(-DateTime, -Junction)
+
+j3.train.external <- j3[1:11674,]%>%
+  select(-DateTime, -Junction)
+
+j4.train.external <- j4[1:3475,]%>%
+  select(-DateTime, -Junction)
+
+## Set Outcomes
+j1.outcome <- j1.train.external$Vehicles
+j2.outcome <- j2.train.external$Vehicles
+j3.outcome <- j3.train.external$Vehicles
+j4.outcome <- j4.train.external$Vehicles
+
+## Set Predictors
+## Only 1 Predictor, Holidays
+j1.predictors <- as.matrix(j1.train.external[, 2])
+j2.predictors <- as.matrix(j2.train.external[, 2])
+j3.predictors <- as.matrix(j3.train.external[, 2])
+j4.predictors <- as.matrix(j4.train.external[, 2])
+
+j1.autoarima <- auto.arima(j1.outcome)
+#j1.autoarima <- auto.arima(j1.outcome, j1.predictors)
+#summary(j1.autoarima)
+
+j2.autoarima <- auto.arima(j2.outcome)
+#j2.autoarima <- auto.arima(j2.outcome, j2.predictors)
+#summary(j2.autoarima)
+
+j3.autoarima <- auto.arima(j3.outcome)
+#j3.autoarima <- auto.arima(j3.outcome, j3.predictors)
+#summary(j3.autoarima)
+
+j4.autoarima <- auto.arima(j4.outcome)
+#j4.autoarima <- auto.arima(j4.outcome, j4.predictors)
+#summary(j4.autoarima)
+
+# Calculate RMSE Values
+j1.autoarima.RMSE <- as.numeric(j1.autoarima$residuals)
+j1.autoarima.RMSE <- sqrt(mean(j1.autoarima.RMSE^2))
+
+j2.autoarima.RMSE <- as.numeric(j2.autoarima$residuals)
+j2.autoarima.RMSE <- sqrt(mean(j2.autoarima.RMSE^2))
+
+j3.autoarima.RMSE <- as.numeric(j3.autoarima$residuals)
+j3.autoarima.RMSE <- sqrt(mean(j3.autoarima.RMSE^2))
+
+j4.autoarima.RMSE <- as.numeric(j4.autoarima$residuals)
+j4.autoarima.RMSE <- sqrt(mean(j4.autoarima.RMSE^2))
+
+auto_model <- auto.arima(j1.train)
+summary(auto_model)
+```
+
+# 5. Model Results
+
+```{r}
+
+j1.results <- data.frame(Model = c("Naive", "Simple Exponential Smoothing", "Holt Winters", "Regression", "Auto Arima"),
+                 RMSE = c(j1.naive.RMSE, j1.se.RMSE, j1.holt.RMSE, j1.reg.RMSE, j1.autoarima.RMSE)
+                 )
+
+j2.results <- data.frame(Model = c("Naive", "Simple Exponential Smoothing", "Holt Winters", "Regression", "Auto Arima"),
+                 RMSE = c(j2.naive.RMSE, j2.se.RMSE, j2.holt.RMSE, j2.reg.RMSE, j2.autoarima.RMSE)
+                 )
+
+j3.results <- data.frame(Model = c("Naive", "Simple Exponential Smoothing", "Holt Winters", "Regression", "Auto Arima"),
+                 RMSE = c(j3.naive.RMSE, j3.se.RMSE, j3.holt.RMSE, j3.reg.RMSE, j3.autoarima.RMSE)
+                 )
+
+j4.results <- data.frame(Model = c("Naive", "Simple Exponential Smoothing", "Holt Winters", "Regression", "Auto Arima"),
+                 RMSE = c(j4.naive.RMSE, j4.se.RMSE, j4.holt.RMSE, j4.reg.RMSE, j4.autoarima.RMSE)
+                 )
+
+j1.results
+j2.results
+j3.results
+j4.results
+```
+
+# 6. Conclusion
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
