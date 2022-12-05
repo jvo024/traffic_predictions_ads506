@@ -25,4 +25,22 @@ This dataset details the number of vehicles that pass through one of 4 different
 
 Data provided by Kaggle: https://www.kaggle.com/datasets/fedesoriano/traffic-prediction-dataset
 
+## Installation
+
+Please load TrafficCongestion.Rmd into your R IDE of choice. The file was tested with R Studio. Please use the file traffic.csv to connect the data to the R Markdown file.
+
+## Methods Used
+
+•	Inferential Statistics
+•	Data Mining 
+•	Predictive Modeling 
+•	Machine Learning
+•	Data Visualization
+•	Programming 
+•	Data Manipulation
+
+## Technologies
+•	R
+
+
 
